@@ -96,7 +96,7 @@ export default function HomePage() {
       <div style={styles.card}>
         <h1 style={styles.title}>销售 CSV 转换工具</h1>
         <p style={styles.desc}>
-          上传原始发票 CSV，自动转换为：单号、门店、日期、时间、产品、数量、金额、payment_method
+          上传原始发票 CSV，自动转换为：门店、单号、日期、时间、产品、数量、金额、payment_method
         </p>
 
         <div style={styles.uploadBox}>
@@ -135,27 +135,29 @@ export default function HomePage() {
               <table style={styles.table}>
                 <thead>
                   <tr>
-                    <th style={styles.th}>单号</th>
+                    
                     <th style={styles.th}>门店</th>
+                    <th style={styles.th}>单号</th>
                     <th style={styles.th}>日期</th>
                     <th style={styles.th}>时间</th>
                     <th style={styles.th}>产品</th>
                     <th style={styles.th}>数量</th>
                     <th style={styles.th}>金额</th>
-                    <th style={styles.th}>payment_method</th>
+                    <th style={styles.th}>支付方式</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row, index) => (
                     <tr key={index}>
-                      <td style={styles.td}>{row.单号}</td>
+                      
                       <td style={styles.td}>{row.门店}</td>
+                      <td style={styles.td}>{row.单号}</td>
                       <td style={styles.td}>{row.日期}</td>
                       <td style={styles.td}>{row.时间}</td>
                       <td style={styles.td}>{row.产品}</td>
                       <td style={styles.td}>{row.数量}</td>
                       <td style={styles.td}>{Number(row.金额).toFixed(2)}</td>
-                      <td style={styles.td}>{row.payment_method}</td>
+                      <td style={styles.td}>{row.支付方式}</td>
                     </tr>
                   ))}
                 </tbody>
