@@ -87,6 +87,8 @@ function cleanProductName(name: string) {
     .replace(/\n/g, " ")
     .replace(/\t/g, " ")
     .replace(/\s+/g, " ")
+    .replace(/\bOption:.*$/i, "")
+    .replace(/\bExtras:.*$/i, "")
     .replace(/^[-–—:\s]+/, "")
     .replace(/[-–—:\s]+$/, "")
     .trim()
