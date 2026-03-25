@@ -108,22 +108,26 @@ export default function HomePage() {
                 <thead>
                   <tr>
                     <th style={styles.th}>门店</th>
+                    <th style={styles.th}>单号</th>
                     <th style={styles.th}>日期</th>
                     <th style={styles.th}>时间</th>
                     <th style={styles.th}>产品</th>
                     <th style={styles.th}>数量</th>
                     <th style={styles.th}>金额</th>
+                    <th style={styles.th}>支付方式</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row, index) => (
                     <tr key={index}>
                       <td style={styles.td}>{row.门店}</td>
+                      <td style={styles.td}>{row.单号}</td>
                       <td style={styles.td}>{row.日期}</td>
                       <td style={styles.td}>{row.时间}</td>
                       <td style={styles.td}>{row.产品}</td>
                       <td style={styles.td}>{row.数量}</td>
                       <td style={styles.td}>{row.金额}</td>
+                      <td style={styles.td}>{row.支付方式}</td>
                     </tr>
                   ))}
                 </tbody>

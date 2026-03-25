@@ -9,18 +9,20 @@ function escapeCsvValue(value: string | number) {
 }
 
 export function convertRowsToCsv(rows: ParsedSaleRow[]) {
-  const headers = ["门店", "日期", "时间", "产品", "数量", "金额"]
+  const headers = ["门店", "单号", "日期", "时间", "产品", "数量", "金额"]
 
   const lines = [
     headers.join(","),
     ...rows.map((row) =>
       [
         escapeCsvValue(row.门店),
+        escapeCsvValue(row.单号),
         escapeCsvValue(row.日期),
         escapeCsvValue(row.时间),
         escapeCsvValue(row.产品),
         escapeCsvValue(row.数量),
         escapeCsvValue(row.金额),
+        escapeCsvValue(row.支付方式),
       ].join(",")
     ),
   ]

@@ -1,10 +1,12 @@
 export type ParsedSaleRow = {
   门店: string
+  单号: string
   日期: string
   时间: string
   产品: string
   数量: number
   金额: number
+  支付方式:string
 }
 
 function normalizeText(raw: string) {
@@ -26,40 +28,96 @@ function to24Hour(hh: string, mm: string, ampm: string) {
   return `${String(hour).padStart(2, "0")}:${mm}`
 }
 
+function extractInvoiceNumber(text: string) {
+  const match = text.match(/Invoice\s*-\s*([0-9]+)/i)
+  return match?.[1]?.trim() || ""
+}
+
 function extractStore(text: string) {
   const match = text.match(/Staff:\s*([A-Za-z0-9_-]+)/i)
   return match?.[1]?.trim() || ""
 }
 
+function extractPaymentMethod(text: string) {
+  const match = text.match(
+    /\b(Store Credit|Bank Card|Cash|EFTPOS|Visa|Mastercard|PayWave|Online|Gift Card)\b/i
+  )
+  return match?.[1]?.trim() || ""
+}
+
 function extractDateAndTime(text: string) {
   const bankMatch = text.match(
-    /Bank Card\s*-\s*(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2}):(\d{2})\s*(AM|PM)/i
+    /Bank Card(?:\s*-\s*(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2}):(\d{2})\s*(AM|PM))?/i
   )
 
   const createdMatch = text.match(
     /Created on:\s*(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2}):(\d{2})\s*(AM|PM)/i
   )
 
-  const match = bankMatch || createdMatch
-  if (!match) return { 日期: "", 时间: "" }
-
-  const [, dd, mm, yyyy, hh, min, ampm] = match
-
-  return {
-    日期: `${yyyy}.${mm}.${dd}`,
-    时间: to24Hour(hh, min, ampm),
+  if (
+    bankMatch &&
+    bankMatch[1] &&
+    bankMatch[2] &&
+    bankMatch[3] &&
+    bankMatch[4] &&
+    bankMatch[5] &&
+    bankMatch[6]
+  ) {
+    const [, dd, mm, yyyy, hh, min, ampm] = bankMatch
+    return {
+      日期: `${yyyy}.${mm}.${dd}`,
+      时间: to24Hour(hh, min, ampm),
+    }
   }
+
+  if (createdMatch) {
+    const [, dd, mm, yyyy, hh, min, ampm] = createdMatch
+    return {
+      日期: `${yyyy}.${mm}.${dd}`,
+      时间: to24Hour(hh, min, ampm),
+    }
+  }
+
+  return { 日期: "", 时间: "" }
 }
 
 function cleanProductName(name: string) {
   return name
+    .replace(/\r/g, " ")
+    .replace(/\n/g, " ")
+    .replace(/\t/g, " ")
     .replace(/\s+/g, " ")
     .replace(/^[-–—:\s]+/, "")
     .replace(/[-–—:\s]+$/, "")
     .trim()
 }
 
-function parseInvoiceBlock(blockRows: string[][]): ParsedSaleRow | null {
+function isAmountCell(cell: string) {
+  return /^\$\d+(\.\d{1,2})?$/.test(cell.trim())
+}
+
+function isQtyCell(cell: string) {
+  return /^\d+$/.test(cell.trim())
+}
+
+function shouldSkipRow(cells: string[]) {
+  const joined = normalizeText(cells.join(" "))
+
+  if (!joined) return true
+  if (/^Invoice\s*-\s*/i.test(joined)) return true
+  if (/Created on:/i.test(joined)) return true
+  if (/Last updated on:/i.test(joined)) return true
+  if (/Status:/i.test(joined)) return true
+  if (/Staff:/i.test(joined)) return true
+  if (/Qty/i.test(joined) && /Item description/i.test(joined)) return true
+  if (/^Total$/i.test(joined) || /\bTotal\b/i.test(joined)) return true
+  if (/^Gst$/i.test(joined) || /\bGst\b/i.test(joined)) return true
+  if (/Bank Card/i.test(joined)) return true
+
+  return false
+}
+
+function parseInvoiceBlock(blockRows: string[][]): ParsedSaleRow[] {
   const text = normalizeText(
     blockRows
       .flat()
@@ -68,72 +126,129 @@ function parseInvoiceBlock(blockRows: string[][]): ParsedSaleRow | null {
       .join(" ")
   )
 
-  if (!text) return null
+  if (!text) return []
 
+  
   const 门店 = extractStore(text)
+  const 单号 = extractInvoiceNumber(text)
   const { 日期, 时间 } = extractDateAndTime(text)
+  const 支付方式 = extractPaymentMethod(text)
 
-  let 产品 = ""
-  let 数量 = 1
-  let 金额 = 0
+  const itemRows: ParsedSaleRow[] = []
 
-  // 按你这个模板，产品行通常长这样：
-  // [空, 1, 产品名, $7.90]
+  let pendingQty = ""
+  let pendingProductParts: string[] = []
+  let collectingMultilineProduct = false
+
+  function flushPending(amountText?: string) {
+    const product = cleanProductName(pendingProductParts.join(" "))
+    const qty = pendingQty ? Number(pendingQty) : 1
+    const amount = amountText ? Number(amountText.replace("$", "")) : 0
+
+    if (product && amount > 0) {
+      itemRows.push({
+        门店,
+        单号,
+        日期,
+        时间,
+        产品: product,
+        数量: qty,
+        金额: amount,
+        支付方式,
+      })
+    }
+
+    pendingQty = ""
+    pendingProductParts = []
+    collectingMultilineProduct = false
+  }
+
   for (const row of blockRows) {
     const cells = row.map((v) => String(v ?? "").trim())
+    const nonEmptyCells = cells.filter(Boolean)
 
-    const qtyCandidate = cells.find((c) => /^\d+$/.test(c))
-    const amountCandidate = cells.find((c) => /^\$\d+(\.\d{2})?$/.test(c))
+    if (nonEmptyCells.length === 0) continue
+    if (shouldSkipRow(nonEmptyCells)) continue
 
-    const hasHeaderWords =
-      cells.some((c) => /Qty/i.test(c)) &&
-      cells.some((c) => /Item description/i.test(c))
+    const amountCell = nonEmptyCells.find(isAmountCell)
+    const qtyCell = nonEmptyCells.find(isQtyCell)
 
-    const hasTotalRow = cells.some((c) => /^Total$/i.test(c))
-    const hasGstRow = cells.some((c) => /^Gst$/i.test(c))
-    const hasBankCardRow = cells.some((c) => /Bank Card/i.test(c))
-    const hasCreatedRow = cells.some((c) => /Created on:/i.test(c))
-    const hasStaffRow = cells.some((c) => /Staff:/i.test(c))
+    // 情况1：标准商品行，例如 [1, 开心果巴斯克, $12.00]
+    if (qtyCell && amountCell) {
+      const productParts = nonEmptyCells.filter(
+        (c) =>
+          !isQtyCell(c) &&
+          !isAmountCell(c) &&
+          !/^Invoice\s*-/i.test(c) &&
+          !/^Total$/i.test(c) &&
+          !/^Gst$/i.test(c) &&
+          !/Bank Card/i.test(c)
+      )
 
-    if (
-      hasHeaderWords ||
-      hasTotalRow ||
-      hasGstRow ||
-      hasBankCardRow ||
-      hasCreatedRow ||
-      hasStaffRow
-    ) {
+      const product = cleanProductName(productParts.join(" "))
+
+      if (product) {
+        itemRows.push({
+          
+          门店,
+          单号,
+          日期,
+          时间,
+          产品: product,
+          数量: Number(qtyCell),
+          金额: Number(amountCell.replace("$", "")),
+          支付方式,
+        })
+        pendingQty = ""
+        pendingProductParts = []
+        collectingMultilineProduct = false
+        continue
+      }
+    }
+
+    // 情况2：多行商品的第一行，例如 [1, Chocolate]
+    if (qtyCell && !amountCell) {
+      const productParts = nonEmptyCells.filter(
+        (c) =>
+          !isQtyCell(c) &&
+          !isAmountCell(c) &&
+          !/^Invoice\s*-/i.test(c)
+      )
+
+      pendingQty = qtyCell
+      pendingProductParts = [...productParts]
+      collectingMultilineProduct = true
       continue
     }
 
-    if (qtyCandidate && amountCandidate) {
-      const productCell = cells.find((c) => {
-        if (!c) return false
-        if (/^\d+$/.test(c)) return false
-        if (/^\$\d+(\.\d{2})?$/.test(c)) return false
-        if (/^Invoice\s*-/i.test(c)) return false
-        return true
-      })
+    // 情况3：多行商品的中间/结尾，例如 [Option: Cold, $6.00] 或 [Option: Cold]
+    if (collectingMultilineProduct) {
+      const extraProductParts = nonEmptyCells.filter(
+        (c) =>
+          !isAmountCell(c) &&
+          !/^Total$/i.test(c) &&
+          !/^Gst$/i.test(c) &&
+          !/Bank Card/i.test(c)
+      )
 
-      if (productCell) {
-        数量 = Number(qtyCandidate)
-        产品 = cleanProductName(productCell)
-        金额 = Number(amountCandidate.replace("$", ""))
-        break
+      if (extraProductParts.length > 0) {
+        pendingProductParts.push(...extraProductParts)
       }
+
+      if (amountCell) {
+        flushPending(amountCell)
+      }
+
+      continue
     }
   }
 
-  if (!门店 && !日期 && !时间 && !产品 && !金额) return null
-
-  return {
-    门店,
-    日期,
-    时间,
-    产品,
-    数量,
-    金额,
+  // 防止最后遗留未完成项
+  if (collectingMultilineProduct) {
+    flushPending()
   }
+
+  return itemRows
 }
 
 export function parseCsvRowsToSales(rows: string[][]): ParsedSaleRow[] {
@@ -142,11 +257,11 @@ export function parseCsvRowsToSales(rows: string[][]): ParsedSaleRow[] {
 
   let currentBlock: string[][] = []
 
-  const flushBlock = () => {
+  function flushBlock() {
     if (currentBlock.length === 0) return
 
-    const parsed = parseInvoiceBlock(currentBlock)
-    if (parsed) {
+    const parsedRows = parseInvoiceBlock(currentBlock)
+    for (const parsed of parsedRows) {
       const key = JSON.stringify(parsed)
       if (!seen.has(key)) {
         seen.add(key)
@@ -161,18 +276,18 @@ export function parseCsvRowsToSales(rows: string[][]): ParsedSaleRow[] {
     const cells = row.map((v) => String(v ?? "").trim())
     const joined = cells.join(" ")
 
-    // 遇到新的 Invoice 开头，说明上一个 block 结束
-    if (/^Invoice\s*-\s*\d+/i.test(cells[0] || "") || /^Invoice\s*-\s*\d+/i.test(joined)) {
+    if (
+      /^Invoice\s*-\s*\d+/i.test(cells[0] || "") ||
+      /^Invoice\s*-\s*\d+/i.test(joined)
+    ) {
       flushBlock()
       currentBlock.push(row)
       continue
     }
 
-    // 普通行继续累积
     currentBlock.push(row)
   }
 
-  // 最后一个 block
   flushBlock()
 
   return results
