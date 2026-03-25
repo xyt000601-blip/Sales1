@@ -46,7 +46,7 @@ function extractPaymentMethod(text: string) {
     /Platform\s*-\s*(.+?)\s*-\s*\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}\s*(AM|PM)/i
   )
   if (platformMatch?.[1]) {
-    return `Platform - ${platformMatch[1].trim()}`
+    return `${platformMatch[1].trim()}`
   }
 
   // 再抓 Store Credit / Bank Card 这种带时间的
