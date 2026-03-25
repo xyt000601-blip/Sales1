@@ -1,12 +1,12 @@
 export type ParsedSaleRow = {
-  门店: string
   单号: string
+  门店: string
   日期: string
   时间: string
   产品: string
   数量: number
   金额: number
-  支付方式:string
+  支付方式: string
 }
 
 function normalizeText(raw: string) {
@@ -39,31 +39,56 @@ function extractStore(text: string) {
 }
 
 function extractPaymentMethod(text: string) {
-  const match = text.match(
+  const normalized = text.replace(/Plateform/gi, "Platform")
+
+  // 先抓 Platform - xxx - 日期时间
+  const platformMatch = normalized.match(
+    /Platform\s*-\s*(.+?)\s*-\s*\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}\s*(AM|PM)/i
+  )
+  if (platformMatch?.[1]) {
+    return `Platform - ${platformMatch[1].trim()}`
+  }
+
+  // 再抓 Store Credit / Bank Card 这种带时间的
+  const timedMatch = normalized.match(
+    /\b(Store Credit|Bank Card|Cash|EFTPOS|Visa|Mastercard|PayWave|Online|Gift Card)\b(?:\s*-\s*\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}\s*(AM|PM))?/i
+  )
+  if (timedMatch?.[1]) {
+    return timedMatch[1].trim()
+  }
+
+  // 最后兜底
+  const simpleMatch = normalized.match(
     /\b(Store Credit|Bank Card|Cash|EFTPOS|Visa|Mastercard|PayWave|Online|Gift Card)\b/i
   )
-  return match?.[1]?.trim() || ""
+  return simpleMatch?.[1]?.trim() || ""
 }
 
 function extractDateAndTime(text: string) {
-  const bankMatch = text.match(
-    /Bank Card(?:\s*-\s*(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2}):(\d{2})\s*(AM|PM))?/i
+  const normalized = text.replace(/Plateform/gi, "Platform")
+
+  const platformMatch = normalized.match(
+    /Platform\s*-\s*.+?\s*-\s*(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2}):(\d{2})\s*(AM|PM)/i
   )
 
-  const createdMatch = text.match(
+  const paymentMatch = normalized.match(
+    /\b(Store Credit|Bank Card|Cash|EFTPOS|Visa|Mastercard|PayWave|Online|Gift Card)\b\s*-\s*(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2}):(\d{2})\s*(AM|PM)/i
+  )
+
+  const createdMatch = normalized.match(
     /Created on:\s*(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2}):(\d{2})\s*(AM|PM)/i
   )
 
-  if (
-    bankMatch &&
-    bankMatch[1] &&
-    bankMatch[2] &&
-    bankMatch[3] &&
-    bankMatch[4] &&
-    bankMatch[5] &&
-    bankMatch[6]
-  ) {
-    const [, dd, mm, yyyy, hh, min, ampm] = bankMatch
+  if (platformMatch) {
+    const [, dd, mm, yyyy, hh, min, ampm] = platformMatch
+    return {
+      日期: `${yyyy}.${mm}.${dd}`,
+      时间: to24Hour(hh, min, ampm),
+    }
+  }
+
+  if (paymentMatch) {
+    const [, , dd, mm, yyyy, hh, min, ampm] = paymentMatch
     return {
       日期: `${yyyy}.${mm}.${dd}`,
       时间: to24Hour(hh, min, ampm),
@@ -87,8 +112,7 @@ function cleanProductName(name: string) {
     .replace(/\n/g, " ")
     .replace(/\t/g, " ")
     .replace(/\s+/g, " ")
-    .replace(/\bOption:.*$/i, "")
-    .replace(/\bExtras:.*$/i, "")
+    .replace(/\b(Option|Options|Extra|Extras|Add on|Add-on):.*$/i, "")
     .replace(/^[-–—:\s]+/, "")
     .replace(/[-–—:\s]+$/, "")
     .trim()
@@ -111,10 +135,14 @@ function shouldSkipRow(cells: string[]) {
   if (/Last updated on:/i.test(joined)) return true
   if (/Status:/i.test(joined)) return true
   if (/Staff:/i.test(joined)) return true
+  if (/Customer:/i.test(joined)) return true
+  if (/Table:/i.test(joined)) return true
   if (/Qty/i.test(joined) && /Item description/i.test(joined)) return true
   if (/^Total$/i.test(joined) || /\bTotal\b/i.test(joined)) return true
   if (/^Gst$/i.test(joined) || /\bGst\b/i.test(joined)) return true
   if (/Bank Card/i.test(joined)) return true
+  if (/Store Credit/i.test(joined)) return true
+  if (/Platform\s*-/i.test(joined) || /Plateform\s*-/i.test(joined)) return true
 
   return false
 }
@@ -130,9 +158,13 @@ function parseInvoiceBlock(blockRows: string[][]): ParsedSaleRow[] {
 
   if (!text) return []
 
-  
-  const 门店 = extractStore(text)
+  // 规则1：只要有 Table，整单跳过
+  if (/Table\s*:/i.test(text)) {
+    return []
+  }
+
   const 单号 = extractInvoiceNumber(text)
+  const 门店 = extractStore(text)
   const { 日期, 时间 } = extractDateAndTime(text)
   const 支付方式 = extractPaymentMethod(text)
 
@@ -149,8 +181,8 @@ function parseInvoiceBlock(blockRows: string[][]): ParsedSaleRow[] {
 
     if (product && amount > 0) {
       itemRows.push({
-        门店,
         单号,
+        门店,
         日期,
         时间,
         产品: product,
@@ -175,7 +207,7 @@ function parseInvoiceBlock(blockRows: string[][]): ParsedSaleRow[] {
     const amountCell = nonEmptyCells.find(isAmountCell)
     const qtyCell = nonEmptyCells.find(isQtyCell)
 
-    // 情况1：标准商品行，例如 [1, 开心果巴斯克, $12.00]
+    // 标准单行商品
     if (qtyCell && amountCell) {
       const productParts = nonEmptyCells.filter(
         (c) =>
@@ -184,16 +216,18 @@ function parseInvoiceBlock(blockRows: string[][]): ParsedSaleRow[] {
           !/^Invoice\s*-/i.test(c) &&
           !/^Total$/i.test(c) &&
           !/^Gst$/i.test(c) &&
-          !/Bank Card/i.test(c)
+          !/Bank Card/i.test(c) &&
+          !/Store Credit/i.test(c) &&
+          !/Platform\s*-/i.test(c) &&
+          !/Plateform\s*-/i.test(c)
       )
 
       const product = cleanProductName(productParts.join(" "))
 
       if (product) {
         itemRows.push({
-          
-          门店,
           单号,
+          门店,
           日期,
           时间,
           产品: product,
@@ -208,7 +242,7 @@ function parseInvoiceBlock(blockRows: string[][]): ParsedSaleRow[] {
       }
     }
 
-    // 情况2：多行商品的第一行，例如 [1, Chocolate]
+    // 多行商品开始
     if (qtyCell && !amountCell) {
       const productParts = nonEmptyCells.filter(
         (c) =>
@@ -223,14 +257,17 @@ function parseInvoiceBlock(blockRows: string[][]): ParsedSaleRow[] {
       continue
     }
 
-    // 情况3：多行商品的中间/结尾，例如 [Option: Cold, $6.00] 或 [Option: Cold]
+    // 多行商品继续
     if (collectingMultilineProduct) {
       const extraProductParts = nonEmptyCells.filter(
         (c) =>
           !isAmountCell(c) &&
           !/^Total$/i.test(c) &&
           !/^Gst$/i.test(c) &&
-          !/Bank Card/i.test(c)
+          !/Bank Card/i.test(c) &&
+          !/Store Credit/i.test(c) &&
+          !/Platform\s*-/i.test(c) &&
+          !/Plateform\s*-/i.test(c)
       )
 
       if (extraProductParts.length > 0) {
@@ -245,7 +282,6 @@ function parseInvoiceBlock(blockRows: string[][]): ParsedSaleRow[] {
     }
   }
 
-  // 防止最后遗留未完成项
   if (collectingMultilineProduct) {
     flushPending()
   }
