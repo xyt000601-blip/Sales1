@@ -48,51 +48,40 @@ export default function HomePage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
 
-  const totalAmount = useMemo(
-    () => rows.reduce((sum, row) => sum + Number(row.金额 || 0), 0),
-    [rows]
-  )
+  const totalAmount = useMemo(() => {
+    return rows.reduce((sum, row) => sum + Number(row.金额 || 0), 0)
+  }, [rows])
 
-  const totalQty = useMemo(
-    () => rows.reduce((sum, row) => sum + Number(row.数量 || 0), 0),
-    [rows]
-  )
-
-function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-  const file = event.target.files?.[0]
-  if (!file) return
-
-  setError("")
-  setLoading(true)
-  setFileName(file.name)
-  setRows([])
+  const totalQty = useMemo(() => {
+    return rows.reduce((sum, row) => sum + Number(row.数量 || 0), 0)
+  }, [rows])
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-  const file = event.target.files?.[0]
-  if (!file) return
+    const file = event.target.files?.[0]
+    if (!file) return
 
-  setError("")
-  setLoading(true)
-  setFileName(file.name)
-  setRows([])
+    setError("")
+    setLoading(true)
+    setFileName(file.name)
+    setRows([])
 
-  try {
-    const text = await file.text()
-    const rawRows = parseCsvText(text)
-    const parsedRows = parseCsvRowsToSales(rawRows)
+    try {
+      const text = await file.text()
+      const rawRows = parseCsvText(text)
+      const parsedRows = parseCsvRowsToSales(rawRows)
 
-    setRows(parsedRows)
+      setRows(parsedRows)
 
-    if (parsedRows.length === 0) {
-      setError("没有解析到有效数据。请检查原始 CSV 格式。")
+      if (parsedRows.length === 0) {
+        setError("没有解析到有效数据。请检查原始 CSV 格式。")
+      }
+    } catch (err) {
+      console.error(err)
+      setError("读取或解析 CSV 失败。")
+    } finally {
+      setLoading(false)
     }
-  } catch (err) {
-    console.error(err)
-    setError("读取或解析 CSV 失败。")
-  } finally {
-    setLoading(false)
   }
-}
 
   function handleDownload() {
     if (rows.length === 0) return
@@ -107,7 +96,7 @@ function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
       <div style={styles.card}>
         <h1 style={styles.title}>销售 CSV 转换工具</h1>
         <p style={styles.desc}>
-          上传原始发票 CSV，自动转换为：门店、日期、时间、产品、数量、金额
+          上传原始发票 CSV，自动转换为：单号、门店、日期、时间、产品、数量、金额、payment_method
         </p>
 
         <div style={styles.uploadBox}>
@@ -124,15 +113,15 @@ function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
                 <div style={styles.summaryLabel}>解析行数</div>
                 <div style={styles.summaryValue}>{rows.length}</div>
               </div>
+
               <div style={styles.summaryItem}>
                 <div style={styles.summaryLabel}>总数量</div>
                 <div style={styles.summaryValue}>{totalQty}</div>
               </div>
+
               <div style={styles.summaryItem}>
                 <div style={styles.summaryLabel}>总金额</div>
-                <div style={styles.summaryValue}>
-                  {totalAmount.toFixed(2)}
-                </div>
+                <div style={styles.summaryValue}>{totalAmount.toFixed(2)}</div>
               </div>
             </div>
 
@@ -146,27 +135,27 @@ function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
               <table style={styles.table}>
                 <thead>
                   <tr>
-                    <th style={styles.th}>门店</th>
                     <th style={styles.th}>单号</th>
+                    <th style={styles.th}>门店</th>
                     <th style={styles.th}>日期</th>
                     <th style={styles.th}>时间</th>
                     <th style={styles.th}>产品</th>
                     <th style={styles.th}>数量</th>
                     <th style={styles.th}>金额</th>
-                    <th style={styles.th}>支付方式</th>
+                    <th style={styles.th}>payment_method</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row, index) => (
                     <tr key={index}>
-                      <td style={styles.td}>{row.门店}</td>
                       <td style={styles.td}>{row.单号}</td>
+                      <td style={styles.td}>{row.门店}</td>
                       <td style={styles.td}>{row.日期}</td>
                       <td style={styles.td}>{row.时间}</td>
                       <td style={styles.td}>{row.产品}</td>
                       <td style={styles.td}>{row.数量}</td>
-                      <td style={styles.td}>{row.金额}</td>
-                      <td style={styles.td}>{row.支付方式}</td>
+                      <td style={styles.td}>{Number(row.金额).toFixed(2)}</td>
+                      <td style={styles.td}>{row.payment_method}</td>
                     </tr>
                   ))}
                 </tbody>
