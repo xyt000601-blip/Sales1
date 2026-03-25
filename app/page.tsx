@@ -21,39 +21,39 @@ export default function HomePage() {
     [rows]
   )
 
-  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) return
+function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+  const file = event.target.files?.[0]
+  if (!file) return
 
-    setError("")
-    setLoading(true)
-    setFileName(file.name)
-    setRows([])
+  setError("")
+  setLoading(true)
+  setFileName(file.name)
+  setRows([])
 
-    Papa.parse<string[]>(file, {
-      skipEmptyLines: true,
-      complete: (result) => {
-        try {
-          const parsedRows = parseCsvRowsToSales(result.data as string[][])
-          setRows(parsedRows)
+  Papa.parse(file, {
+    skipEmptyLines: true,
+    complete: (result: any) => {
+      try {
+        const parsedRows = parseCsvRowsToSales(result.data as string[][])
+        setRows(parsedRows)
 
-          if (parsedRows.length === 0) {
-            setError("没有解析到有效数据。请检查原始 CSV 格式。")
-          }
-        } catch (err) {
-          console.error(err)
-          setError("解析失败，请检查文件内容。")
-        } finally {
-          setLoading(false)
+        if (parsedRows.length === 0) {
+          setError("没有解析到有效数据。请检查原始 CSV 格式。")
         }
-      },
-      error: (err) => {
+      } catch (err) {
         console.error(err)
-        setError("读取 CSV 失败。")
+        setError("解析失败，请检查文件内容。")
+      } finally {
         setLoading(false)
-      },
-    })
-  }
+      }
+    },
+    error: (err: any) => {
+      console.error(err)
+      setError("读取 CSV 失败。")
+      setLoading(false)
+    },
+  })
+}
 
   function handleDownload() {
     if (rows.length === 0) return
