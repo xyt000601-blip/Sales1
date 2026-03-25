@@ -110,7 +110,7 @@ export default function HomePage() {
       <div style={styles.card}>
         <h1 style={styles.title}>销售 CSV 转换工具</h1>
         <p style={styles.desc}>
-          上传原始发票 CSV，自动转换为：门店、单号、日期、时间、产品、数量、金额、payment_method
+          上传原始发票 CSV，自动转换为：门店、单号、日期、时间、产品、数量、金额、支付方式
         </p>
 
         <div style={styles.uploadBox}>
