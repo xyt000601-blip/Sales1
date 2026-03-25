@@ -1,9 +1,46 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import Papa from "papaparse"
 import { convertRowsToCsv, downloadCsv } from "@/lib/exportCsv"
 import { parseCsvRowsToSales, type ParsedSaleRow } from "@/lib/parseInvoice"
+
+function splitCsvLine(line: string): string[] {
+  const result: string[] = []
+  let current = ""
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    const next = line[i + 1]
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"'
+        i++
+      } else {
+        inQuotes = !inQuotes
+      }
+      continue
+    }
+
+    if (char === "," && !inQuotes) {
+      result.push(current)
+      current = ""
+      continue
+    }
+
+    current += char
+  }
+
+  result.push(current)
+  return result
+}
+
+function parseCsvText(text: string): string[][] {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  const lines = normalized.split("\n").filter((line) => line.trim() !== "")
+  return lines.map(splitCsvLine)
+}
 
 export default function HomePage() {
   const [rows, setRows] = useState<ParsedSaleRow[]>([])
@@ -30,29 +67,31 @@ function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
   setFileName(file.name)
   setRows([])
 
-  Papa.parse(file, {
-    skipEmptyLines: true,
-    complete: (result: any) => {
-      try {
-        const parsedRows = parseCsvRowsToSales(result.data as string[][])
-        setRows(parsedRows)
+  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+  const file = event.target.files?.[0]
+  if (!file) return
 
-        if (parsedRows.length === 0) {
-          setError("没有解析到有效数据。请检查原始 CSV 格式。")
-        }
-      } catch (err) {
-        console.error(err)
-        setError("解析失败，请检查文件内容。")
-      } finally {
-        setLoading(false)
-      }
-    },
-    error: (err: any) => {
-      console.error(err)
-      setError("读取 CSV 失败。")
-      setLoading(false)
-    },
-  })
+  setError("")
+  setLoading(true)
+  setFileName(file.name)
+  setRows([])
+
+  try {
+    const text = await file.text()
+    const rawRows = parseCsvText(text)
+    const parsedRows = parseCsvRowsToSales(rawRows)
+
+    setRows(parsedRows)
+
+    if (parsedRows.length === 0) {
+      setError("没有解析到有效数据。请检查原始 CSV 格式。")
+    }
+  } catch (err) {
+    console.error(err)
+    setError("读取或解析 CSV 失败。")
+  } finally {
+    setLoading(false)
+  }
 }
 
   function handleDownload() {
