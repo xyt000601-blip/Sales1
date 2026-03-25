@@ -9,7 +9,7 @@ function escapeCsvValue(value: string | number) {
 }
 
 export function convertRowsToCsv(rows: ParsedSaleRow[]) {
-  const headers = ["门店", "单号", "日期", "时间", "产品", "数量", "金额"]
+  const headers = ["门店", "单号", "日期", "时间", "产品", "数量", "金额", "支付方式"]
 
   const lines = [
     headers.join(","),
