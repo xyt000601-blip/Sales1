@@ -4,18 +4,21 @@ import { useMemo, useState } from "react"
 import { convertRowsToCsv, downloadCsv } from "@/lib/exportCsv"
 import { parseCsvRowsToSales, type ParsedSaleRow } from "@/lib/parseInvoice"
 
-function splitCsvLine(line: string): string[] {
-  const result: string[] = []
-  let current = ""
+function parseCsvText(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ""
   let inQuotes = false
 
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i]
-    const next = line[i + 1]
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+
+  for (let i = 0; i < normalized.length; i++) {
+    const char = normalized[i]
+    const next = normalized[i + 1]
 
     if (char === '"') {
       if (inQuotes && next === '"') {
-        current += '"'
+        cell += '"'
         i++
       } else {
         inQuotes = !inQuotes
@@ -24,22 +27,33 @@ function splitCsvLine(line: string): string[] {
     }
 
     if (char === "," && !inQuotes) {
-      result.push(current)
-      current = ""
+      row.push(cell)
+      cell = ""
       continue
     }
 
-    current += char
+    if (char === "\n" && !inQuotes) {
+      row.push(cell)
+
+      if (row.some((c) => String(c).trim() !== "")) {
+        rows.push(row)
+      }
+
+      row = []
+      cell = ""
+      continue
+    }
+
+    cell += char
   }
 
-  result.push(current)
-  return result
-}
+  // 收尾
+  row.push(cell)
+  if (row.some((c) => String(c).trim() !== "")) {
+    rows.push(row)
+  }
 
-function parseCsvText(text: string): string[][] {
-  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
-  const lines = normalized.split("\n").filter((line) => line.trim() !== "")
-  return lines.map(splitCsvLine)
+  return rows
 }
 
 export default function HomePage() {
