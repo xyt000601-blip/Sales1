@@ -156,10 +156,15 @@ function parseInvoiceBlock(blockRows: string[][]): ParsedSaleRow[] {
       .join(" ")
   )
 
-  if (!text) return []
+    if (!text) return []
 
   // 规则1：只要有 Table，整单跳过
   if (/Table\s*:/i.test(text)) {
+    return []
+  }
+
+  // 规则2：只保留 Status: Completed
+  if (!/Status:\s*Completed/i.test(text)) {
     return []
   }
 
